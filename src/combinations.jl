@@ -10,23 +10,41 @@ struct Combinations
     t::Int
 end
 
-@inline function Base.iterate(c::Combinations, s = [min(c.t - 1, i) for i in 1:c.t])
-    if c.t == 0 # special case to generate 1 result for t==0
-        isempty(s) && return (s, [1])
-        return
-    end
-    for i in c.t:-1:1
-        s[i] += 1
-        if s[i] > (c.n - (c.t - i))
-            continue
-        end
-        for j in i+1:c.t
-            s[j] = s[j-1] + 1
-        end
-        break
-    end
-    s[1] > c.n - c.t + 1 && return
-    (s, s)
+"""
+    __iterate(c::Combinations, s::NTuple{N, Int}
+
+Internal function used in iterating `Combinations`. Returns `(next_state, valid)` where `valid` is false if all iterations have finished.
+"""
+@inline function __iterate(c::Combinations, s::NTuple{N, Int}) where N
+  f = s[1]
+  if f < c.n - c.t + N
+    return (f+1, Base.tail(s)...), true
+  else
+    rest, valid = __iterate(c, Base.tail(s))
+    return (rest[1]+1, rest...), valid
+  end
+end
+
+@inline function __iterate(c::Combinations, s::Tuple{Int})
+  f = s[1]
+  if f < c.n - c.t + 1
+    return (f+1,), true
+  else
+    return s, false
+  end
+end
+
+@inline function Base.iterate(c::Combinations)
+  # Produces Tuple(c.t:-1:1) but type-stable
+  state = ntuple(n -> c.t - n + 1, c.t)
+  return state, state
+end
+
+Base.iterate(::Combinations, ::Tuple{}) = nothing
+@inline function Base.iterate(c::Combinations, s::NTuple{N, Int}) where N
+  state, valid = __iterate(c, s)
+  valid || return nothing
+  return state, state
 end
 
 Base.length(c::Combinations) = binomial(c.n, c.t)
@@ -43,10 +61,9 @@ Use `collect(combinations(a, n))` to get an array of all combinations.
 function combinations(a, t::Integer)
     if t < 0
         # generate 0 combinations for negative argument
-        t = length(a) + 1
+        return ()
     end
-    reorder(c) = [a[ci] for ci in c]
-    (reorder(c) for c in Combinations(length(a), t))
+    return (collect(getindex.((a,), reverse(c))) for c in Combinations(length(a), t))
 end
 
 
@@ -56,7 +73,7 @@ end
 Generate combinations of the elements of `a` of all orders. Chaining of order iterators
 is eager, but the sequence at each order is lazy.
 """
-combinations(a) = Iterators.flatten([combinations(a, k) for k = 0:length(a)])
+combinations(a) = Iterators.flatten(combinations(a, k) for k = 0:length(a))
 
 # cool-lex combinations iterator
 
